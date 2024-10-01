@@ -1,0 +1,31 @@
+[package]
+name = "wgpu-learning"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# winit old version!
+winit = { version = "0.29", features = ["rwh_05"] } # need raw window handle
+env_logger = "0.10"
+log = "0.4"
+wgpu = "22.0"
+cfg-if = "1"
+pollster = "0.3" # for simple async functions and blocking threads
+bytemuck = "1.18.0"
+chrono = { version = "0.4", default-features = false, features = ["wasmbind", "js-sys"] }
+
+
+[lib]
+crate-type = ["cdylib", "rlib"] # cdylib c/c++ compatible library and rlib rust static lib
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1.6" # panic! to console.error
+console_log = "1.0" # js log api in rust
+wgpu = { version = "22.0", features = ["webgl"]} # enable webGL
+wasm-bindgen = "0.2" # expose methods and get methods from js
+wasm-bindgen-futures = "0.4.30" # for async functions on web
+web-sys = { version = "0.3", features = [ # js methods and structs
+    "Document",
+    "Window",
+    "Element",
+]}
