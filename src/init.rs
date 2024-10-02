@@ -1,6 +1,4 @@
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
-
+use crate::demo::{demo_input_handler, demo_update_handler, Color, DemoApp, Shape};
 use wgpu::util::DeviceExt;
 use winit::{
     event::*,
@@ -9,17 +7,21 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use crate::demo::{demo_input_handler, demo_update_handler, Color, DemoApp, Shape};
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
+const INITIAL_WINDOW: (u32, u32) = (640, 480);
 
 type InputHandler<T> = fn(&mut State<T>, &WindowEvent) -> bool;
 type UpdateFn<T> = fn(&mut State<T>);
+
 pub struct State<'a, T> {
     // wgpu ctx
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    size: winit::dpi::PhysicalSize<u32>,
+    size: winit::dpi::LogicalSize<u32>,
 
     // window must be initialized after surface
     // so it gets dropped after it as the surface
@@ -46,10 +48,11 @@ impl<'a, T> State<'a, T> {
     async fn new(
         window: &'a Window,
         game_context: &'a mut T,
+        initial_size: winit::dpi::LogicalSize<u32>,
         input_handler: InputHandler<T>,
         update_fn: UpdateFn<T>,
     ) -> State<'a, T> {
-        let size = window.inner_size();
+        let size = initial_size;
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             #[cfg(not(target_arch = "wasm32"))]
             backends: wgpu::Backends::PRIMARY,
@@ -120,8 +123,8 @@ impl<'a, T> State<'a, T> {
         let clear_color = wgpu::Color::BLACK;
 
         let texture_extent = wgpu::Extent3d {
-            width: size.width,
-            height: size.height,
+            width: INITIAL_WINDOW.0,
+            height: INITIAL_WINDOW.1,
             depth_or_array_layers: 1,
         };
         let texture_format = surface_format;
@@ -283,7 +286,7 @@ impl<'a, T> State<'a, T> {
         &self.window
     }
 
-    pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+    pub fn resize(&mut self, new_size: winit::dpi::LogicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
             self.size = new_size;
             self.config.width = new_size.width;
@@ -360,7 +363,7 @@ impl<'a, T> State<'a, T> {
         } // block tells rust to drop any vars after scope
           // so we can encoder.finish()
 
-        self.queue.submit(Some(encoder.finish()));
+        self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
 
         // let (frame_time, fps) = self.fps_counter.update();
@@ -369,7 +372,6 @@ impl<'a, T> State<'a, T> {
         return Ok(());
     }
 }
-const INITIAL_WINDOW: (i32, i32) = (640, 480);
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub async fn run() {
@@ -381,12 +383,10 @@ pub async fn run() {
             env_logger::init();
         }
     }
+    let size = winit::dpi::LogicalSize::new(INITIAL_WINDOW.0, INITIAL_WINDOW.1);
     let event_loop = EventLoop::new().unwrap();
     let window = WindowBuilder::new()
-        .with_inner_size(winit::dpi::LogicalSize::new(
-            INITIAL_WINDOW.0,
-            INITIAL_WINDOW.1,
-        ))
+        .with_inner_size(size)
         .build(&event_loop)
         .unwrap();
 
@@ -394,8 +394,7 @@ pub async fn run() {
     {
         // Winit prevents sizing with CSS, so we have to set
         // the size manually when on web.
-        use winit::dpi::PhysicalSize;
-        let _ = window.request_inner_size(PhysicalSize::new(INITIAL_WINDOW.0, INITIAL_WINDOW.1));
+        let _ = window.request_inner_size(size);
 
         use winit::platform::web::WindowExtWebSys;
         web_sys::window()
@@ -416,6 +415,7 @@ pub async fn run() {
     let mut state = State::new(
         &window,
         &mut demo_app,
+        size,
         demo_input_handler,
         demo_update_handler,
     )
@@ -444,7 +444,7 @@ pub async fn run() {
                             WindowEvent::Resized(physical_size) => {
                                 log::info!("physical_size: {physical_size:?}");
                                 surface_configured = true;
-                                state.resize(*physical_size);
+                                state.resize(physical_size.to_logical(1.0));
                             }
                             WindowEvent::RedrawRequested => {
                                 // This tells winit that we want another frame after this one
