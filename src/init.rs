@@ -1,7 +1,11 @@
-use crate::demo::{demo_input_handler, demo_update_handler, Color, DemoApp, Shape};
+use crate::{
+    demo::{demo_input_handler, demo_update_handler, Color, DemoApp, Shape},
+    fps::FpsCounter,
+};
 use wgpu::util::DeviceExt;
 use winit::{
     event::*,
+    dpi::LogicalSize,
     event_loop::EventLoop,
     keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowBuilder},
@@ -10,7 +14,7 @@ use winit::{
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-const INITIAL_WINDOW: (u32, u32) = (640, 480);
+const INITIAL_WINDOW: (u32, u32) = (640, 480); // Default size
 
 type InputHandler<T> = fn(&mut State<T>, &WindowEvent) -> bool;
 type UpdateFn<T> = fn(&mut State<T>);
@@ -21,7 +25,7 @@ pub struct State<'a, T> {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    size: winit::dpi::LogicalSize<u32>,
+    size: LogicalSize<u32>,
 
     // window must be initialized after surface
     // so it gets dropped after it as the surface
@@ -37,7 +41,7 @@ pub struct State<'a, T> {
     vertex_buffer: wgpu::Buffer,
 
     // game ctx
-    // fps_counter: FpsCounter,
+    fps_counter: FpsCounter,
     input_handler: InputHandler<T>,
     update_fn: UpdateFn<T>,
     pub game_context: &'a mut T,
@@ -48,7 +52,7 @@ impl<'a, T> State<'a, T> {
     async fn new(
         window: &'a Window,
         game_context: &'a mut T,
-        initial_size: winit::dpi::LogicalSize<u32>,
+        initial_size: LogicalSize<u32>,
         input_handler: InputHandler<T>,
         update_fn: UpdateFn<T>,
     ) -> State<'a, T> {
@@ -259,12 +263,12 @@ impl<'a, T> State<'a, T> {
             multiview: None,
             cache: None,
         });
-        // let fps_counter = FpsCounter::new();
+        let fps_counter = FpsCounter::new();
 
         return Self {
             update_fn,
             game_context,
-            // fps_counter,
+            fps_counter,
             vertex_buffer,
             pixels,
             texture_extent,
@@ -286,7 +290,7 @@ impl<'a, T> State<'a, T> {
         &self.window
     }
 
-    pub fn resize(&mut self, new_size: winit::dpi::LogicalSize<u32>) {
+    pub fn resize(&mut self, new_size: LogicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
             self.size = new_size;
             self.config.width = new_size.width;
@@ -366,9 +370,9 @@ impl<'a, T> State<'a, T> {
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
 
-        // let (frame_time, fps) = self.fps_counter.update();
-        // self.window
-        //     .set_title(&format!("FPS: {} - Frame Time: {:.2}ms", fps, frame_time));
+        let (frame_time, fps) = self.fps_counter.update();
+        self.window
+            .set_title(&format!("FPS: {} - Frame Time: {:.2}ms", fps, frame_time));
         return Ok(());
     }
 }
@@ -383,7 +387,7 @@ pub async fn run() {
             env_logger::init();
         }
     }
-    let size = winit::dpi::LogicalSize::new(INITIAL_WINDOW.0, INITIAL_WINDOW.1);
+    let size = LogicalSize::new(INITIAL_WINDOW.0, INITIAL_WINDOW.1);
     let event_loop = EventLoop::new().unwrap();
     let window = WindowBuilder::new()
         .with_inner_size(size)
@@ -401,6 +405,16 @@ pub async fn run() {
             .and_then(|win| win.document())
             .and_then(|doc| {
                 let dst = doc.get_element_by_id("_wgpu")?;
+
+                // for fps counting in the webpage
+                let fps_counter = doc
+                    .create_element("div")
+                    .expect("Couldn't create FPS counter div");
+                fps_counter.set_id("_wgpu-fps");
+                fps_counter.set_inner_html("FPS: 0.0");
+                dst.append_child(&fps_counter)
+                    .expect("Couldn't append FPS counter to document body.");
+
                 let canvas = web_sys::Element::from(window.canvas()?);
                 dst.append_child(&canvas).ok()?;
                 Some(())
@@ -424,6 +438,20 @@ pub async fn run() {
 
     event_loop
         .run(move |event, control_flow| {
+            #[cfg(target_arch = "wasm32")]
+            {
+                web_sys::window()
+                    .and_then(|win| win.document())
+                    .and_then(|doc| {
+                        let fps_counter_element = doc
+                            .get_element_by_id("_wgpu-fps")
+                            .expect("Couldn't find FPS counter element");
+                        fps_counter_element
+                            .set_inner_html(&format!("FPS: {:.2}", state.fps_counter.fps()));
+                        Some(())
+                    })
+                    .expect("Couldn't update FPS counter in document body.");
+            }
             match event {
                 Event::WindowEvent {
                     ref event,

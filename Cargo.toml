@@ -6,13 +6,13 @@ edition = "2021"
 [dependencies]
 # winit old version!
 winit = { version = "0.29", features = ["rwh_05"] } # need raw window handle
+chrono = "0.4"
 env_logger = "0.10"
 log = "0.4"
 wgpu = "22.0"
 cfg-if = "1"
 pollster = "0.3" # for simple async functions and blocking threads
 bytemuck = "1.18.0"
-chrono = { version = "0.4", default-features = false, features = ["wasmbind", "js-sys"] }
 
 
 [lib]
